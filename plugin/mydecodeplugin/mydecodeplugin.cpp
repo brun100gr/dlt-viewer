@@ -1,6 +1,10 @@
 #include <QtGui>
 #include "mydecodeplugin.h"
 
+static const QRegularExpression re(
+    R"(FCT_ManageLateralState_OUT_ConditionEvaluationDbg:\s*(\d+))"
+);
+
 MyDecodePlugin::MyDecodePlugin() {
     dltFile = nullptr;
     counterMessages = 0;
@@ -9,7 +13,7 @@ MyDecodePlugin::MyDecodePlugin() {
 }
 
 MyDecodePlugin::~MyDecodePlugin() {
-    // anche vuoto va bene, ma deve essere definito nel .cpp
+    // Empty is fine, but it must be defined in the .cpp
 }
 
 bool MyDecodePlugin::isActiveDltDecoder() {
@@ -17,22 +21,17 @@ bool MyDecodePlugin::isActiveDltDecoder() {
 }
 
 bool MyDecodePlugin::isMsg(QDltMsg &msg, int /*triggeredByUser*/) {
-    QString text = msg.toStringPayload();
-    QRegularExpression re(R"(FCT_ManageLateralState_OUT_ConditionEvaluationDbg:\s*(\d+))");
-    return re.match(text).hasMatch();
+    return msg.getApid().trimmed() == "ADF" &&
+        msg.getCtid().trimmed() == "ADF_";
 }
 
 bool MyDecodePlugin::isAcceptMsg(int index, QDltMsg &msg) {
-    // Chiamato per ogni messaggio: accetta solo quelli con il nostro prefisso
-    QString text = msg.toStringPayload();
-    QRegularExpression re(R"(FCT_ManageLateralState_OUT_ConditionEvaluationDbg:\s*(\d+))");
-    return re.match(text).hasMatch();
+    return true;
 }
 
 bool MyDecodePlugin::decodeMsg(QDltMsg &msg, int /*triggeredByUser*/) {
     QString text = msg.toStringPayload();
 
-    QRegularExpression re(R"(FCT_ManageLateralState_OUT_ConditionEvaluationDbg:\s*(\d+))");
     QRegularExpressionMatch match = re.match(text);
     if (!match.hasMatch())
         return false;
@@ -44,19 +43,19 @@ bool MyDecodePlugin::decodeMsg(QDltMsg &msg, int /*triggeredByUser*/) {
 
     // --- decode bitmask ---
     static const QMap<uint32_t, QString> bitMap = {
-        {1, "dbgCarbodyLatAccelerationCorrected"},
-        {2, "dbgLPA_PerceptionState"},
-        {4, "dbgDstWidthEgoLine"},
-        {8, "dbgSteeringwheelRotationVelocityFrontValue"},
-        {16, "dbgMAL"},
-        {32, "dbgESC_Status"},
-        {64, "dbgESC_TCS_State"},
-        {128, "dbgVehicleLongSpeedComputedValue"},
-        {256, "dbgFailureDetected"},
-        {512, "dbgTurnSignalSts"},
-        {1024, "dbgHandwheelSteeringTorqueMeasured"},
-        {2048, "dbgADAS_VehicleMotion"},
-        {4096, "dbgHOD_Flag"},
+        {1, "CarbodyLatAccelerationCorrected"},
+        {2, "LPA_PerceptionState"},
+        {4, "DstWidthEgoLine"},
+        {8, "SteeringwheelRotationVelocityFrontValue"},
+        {16, "MAL"},
+        {32, "ESC_Status"},
+        {64, "ESC_TCS_State"},
+        {128, "VehicleLongSpeedComputedValue"},
+        {256, "FailureDetected"},
+        {512, "TurnSignalSts"},
+        {1024, "HandwheelSteeringTorqueMeasured"},
+        {2048, "ADAS_VehicleMotion"},
+        {4096, "HOD_Flag"},
     };
 
     QStringList conditions;
@@ -69,10 +68,10 @@ bool MyDecodePlugin::decodeMsg(QDltMsg &msg, int /*triggeredByUser*/) {
         ? "none"
         : conditions.join(", ");
 
-    // payload finale: originale + " -> " + decodifica
+    // final payload: original + " -> " + decoded
     QString final = text + " -> " + decoded;
 
-    // Costruisci payload DLT binario
+    // Build binary DLT payload
     QByteArray newPayload;
     bool littleEndian = (msg.getEndianness() == QDlt::DltEndiannessLittleEndian);
 
@@ -96,7 +95,6 @@ bool MyDecodePlugin::decodeMsg(QDltMsg &msg, int /*triggeredByUser*/) {
     msg.setPayload(newPayload);
     msg.parseArguments();
 
-    fprintf(stderr, "DLT decoded: %s\n", final.toUtf8().constData());
     return true;
 }
 
@@ -135,5 +133,3 @@ QStringList MyDecodePlugin::infoConfig() {
 #if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
 Q_EXPORT_PLUGIN2(MyDecodePlugin, MyDecodePlugin);
 #endif
-
-
