@@ -27,6 +27,8 @@ MyDecodePlugin::MyDecodePlugin()
     counterMessages = 0;
     counterNonVerboseMessages = 0;
     counterVerboseMessages = 0;
+
+    fprintf(stderr, "PLUGIN COSTRUTTORE\n");
 }
 
 MyDecodePlugin::~MyDecodePlugin()
@@ -139,13 +141,51 @@ void MyDecodePlugin::updateFileStart(){
 
 }
 
-void MyDecodePlugin::updateMsg(int index, QDltMsg &msg){
-        if(!dltFile)
-            return;
+void MyDecodePlugin::updateMsg(int index, QDltMsg &msg) {
+    if (!dltFile) {
+        return;
+    }
 
-        updateCounters(index,msg);
+    // ✅ Modo corretto: usa toStringPayload() che decodifica gli argomenti DLT
+    QString text = msg.toStringPayload();
 
-        counterMessages = dltFile->size();
+    // --- cerca e valida il numero in modo robusto ---
+    QRegularExpression re(R"(ActivationCondition:\s*(\d+))");
+    QRegularExpressionMatch match = re.match(text);
+
+    if (!match.hasMatch()) {
+        fprintf(stderr, "Prefix NOT found. Text was: %s\n",
+                text.toUtf8().constData());
+        return;
+    }
+
+    fprintf(stderr, "++++++++++>02\n");
+
+    bool ok = false;
+    uint32_t mask = match.captured(1).toUInt(&ok);
+    if (!ok) {
+        QByteArray error = QByteArray("Activation Condition parse error");
+        msg.setPayload(error);
+        return;
+    }
+
+    // --- decode bitmask ---
+    QStringList conditions;
+    for (int i = 0; i < 32; i++) {
+        uint32_t bit = (1u << i);
+        if (mask & bit) {
+            conditions << QString("condizione%1").arg(i + 1);
+        }
+    }
+
+    // --- output finale ---
+    QString decoded = "Activation Condition are: " + conditions.join(", ");
+    QByteArray decodedPayload = decoded.toUtf8();
+    msg.setPayload(decodedPayload);
+
+    fprintf(stderr, "DLT payload: %s\n", decoded.toUtf8().constData());
+    updateCounters(index, msg);
+    counterMessages = dltFile->size();
 }
 
 void MyDecodePlugin::updateMsgDecoded(int , QDltMsg &){
@@ -160,3 +200,5 @@ void MyDecodePlugin::updateFileFinish(){
 #if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
 Q_EXPORT_PLUGIN2(MyDecodePlugin, MyDecodePlugin);
 #endif
+
+
