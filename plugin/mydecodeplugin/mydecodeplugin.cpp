@@ -31,19 +31,18 @@ bool MyDecodePlugin::isAcceptMsg(int index, QDltMsg &msg) {
 
 bool MyDecodePlugin::decodeMsg(QDltMsg &msg, int /*triggeredByUser*/) {
     QString text = msg.toStringPayload();
+
     QRegularExpression re(R"(ActivationCondition:\s*(\d+))");
     QRegularExpressionMatch match = re.match(text);
     if (!match.hasMatch())
-        return false;  // ← ora ritorna bool
+        return false;
 
     bool ok = false;
     uint32_t mask = match.captured(1).toUInt(&ok);
-    if (!ok) {
-        QByteArray error("Activation Condition parse error");
-        msg.setPayload(error);
+    if (!ok)
         return false;
-    }
 
+    // --- decode bitmask ---
     QStringList conditions;
     for (int i = 0; i < 32; i++) {
         if (mask & (1u << i))
@@ -51,11 +50,35 @@ bool MyDecodePlugin::decodeMsg(QDltMsg &msg, int /*triggeredByUser*/) {
     }
 
     QString decoded = "Activation Condition are: " + conditions.join(", ");
-    QByteArray decodedPayload = decoded.toUtf8();
-    msg.setPayload(decodedPayload);
+
+    // Costruisci payload DLT con formato binario corretto:
+    // [type_info: 4 byte LE][length: 2 byte LE][stringa + null terminator]
+    QByteArray newPayload;
+    bool littleEndian = (msg.getEndianness() == QDlt::DltEndiannessLittleEndian);
+
+    QByteArray strData = decoded.toUtf8();
+    strData.append('\0');  // null terminator
+
+    uint32_t typeInfo = 0x00000200;  // DLT_TYPE_INFO_STRG (string type)
+    uint16_t strLen = static_cast<uint16_t>(strData.size());
+
+    if (littleEndian) {
+        newPayload.append(reinterpret_cast<const char*>(&typeInfo), 4);
+        newPayload.append(reinterpret_cast<const char*>(&strLen), 2);
+    } else {
+        // big endian: inverti i byte
+        uint32_t typeInfoBE = qToBigEndian(typeInfo);
+        uint16_t strLenBE   = qToBigEndian(strLen);
+        newPayload.append(reinterpret_cast<const char*>(&typeInfoBE), 4);
+        newPayload.append(reinterpret_cast<const char*>(&strLenBE), 2);
+    }
+    newPayload.append(strData);
+
+    msg.setPayload(newPayload);
+    msg.parseArguments();  // ← fondamentale per aggiornare la GUI
 
     fprintf(stderr, "DLT decoded: %s\n", decoded.toUtf8().constData());
-    return true;  // ← decodifica riuscita
+    return true;
 }
 
 QString MyDecodePlugin::name() {
