@@ -1,7 +1,9 @@
-#ifndef myDecodePlugin_H
-#define myDecodePlugin_H
+#ifndef MYDECODEPLUGIN_H
+#define MYDECODEPLUGIN_H
 
 #include <QObject>
+#include <QHash>
+#include <functional>
 #include "plugininterface.h"
 
 #define MY_DECODE_PLUGIN_VERSION "1.0.0"
@@ -32,21 +34,18 @@ public:
     bool saveConfig(QString filename);
     QStringList infoConfig();
 
-/* QDLTPluginDecoderInterface */
+    /* QDLTPluginDecoderInterface */
     bool isActiveDltDecoder();
-    bool isMsg(QDltMsg &msg, int triggeredByUser);      // ← mancava
+    bool isMsg(QDltMsg &msg, int triggeredByUser);  // ← obbligatorio
     bool isAcceptMsg(int index, QDltMsg &msg);
-    bool decodeMsg(QDltMsg &msg, int triggeredByUser);  // ← bool, non void
-
-    /* internal */
-    void updateCounters(int index, QDltMsg &msg);
-    int counterMessages;
-    int counterNonVerboseMessages;
-    int counterVerboseMessages;
+    bool decodeMsg(QDltMsg &msg, int triggeredByUser);
 
 private:
-    QDltFile *dltFile;
-    QString errorText;
+    using DecoderFn = std::function<bool(QDltMsg &, const QString &)>;
+    QHash<QString, DecoderFn> dispatch_;
+
+    static QByteArray buildDltStringPayload(const QString &text, bool littleEndian);
+    static void registerDecoders(QHash<QString, DecoderFn> &d);
 };
 
-#endif // myDecodePlugin_H
+#endif // MYDECODEPLUGIN_H
