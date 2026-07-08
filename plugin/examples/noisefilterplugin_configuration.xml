@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Example configuration for the DLT Noise Filter Plugin.
+
+  Each <signal> defines a noisy signal and its dead-band threshold:
+    - apid      : application id (leave empty to match any)
+    - ctid      : context id (leave empty to match any)
+    - name      : signal name = the payload text before the ':' separator
+    - threshold : the signal is shown again only when it changed by at least
+                  this amount from the last value that was actually shown.
+
+  The "marker" attribute is the token prepended to the payload of suppressed
+  messages. Use a negative DLT filter on this token to hide them from the view
+  (see filters/noise_suppressed.dlf).
+
+  The "defaultThreshold" attribute is the dead-band applied to every other
+  numeric "name : value" signal that is NOT listed below. Set it to 0 (or omit
+  it) to disable the default, so that only the explicitly listed signals are
+  filtered. Individual <signal> entries always override the default.
+-->
+<noisefilter marker="NOISE_SUPPRESSED" defaultThreshold="0.05">
+    <signal apid="ADF" ctid="ADF_" name="AdasDrivingFunction_IN_VehicleLongSpeedComputedValue"   threshold="1.0"/>
+    <signal apid="ADF" ctid="ADF_" name="AdasDrivingFunction_IN_CarbodyLatAccelerationCorrected" threshold="0.5"/>
+</noisefilter>

@@ -35,6 +35,7 @@ add_subdirectory(dltviewerplugin)
 add_subdirectory(filetransferplugin)
 add_subdirectory(nonverboseplugin)
 add_subdirectory(mydecodeplugin)
+add_subdirectory(dltnoisefilterplugin)
 
 option(DLT_NON_FUNCTIONAL_PLUGINS "Build Non Functional Plugins" OFF)
 if(DLT_NON_FUNCTIONAL_PLUGINS)

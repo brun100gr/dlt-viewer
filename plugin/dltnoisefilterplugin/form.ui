@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DltNoiseFilterPluginNs::Form</class>
+ <widget class="QWidget" name="DltNoiseFilterPluginNs::Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>360</width>
+    <height>320</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Noise Filter</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="labelHint">
+     <property name="text">
+      <string>Per-signal dead-band. A signal is shown again only when it changed by at least the threshold from the last shown value. The default threshold applies to every other numeric signal (0 = disabled).</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="tableSignals">
+     <column>
+      <property name="text">
+       <string>APID</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>CTID</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Signal</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Threshold</string>
+      </property>
+     </column>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="buttonsLayout">
+     <item>
+      <widget class="QPushButton" name="buttonAdd">
+       <property name="text">
+        <string>Add</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="buttonRemove">
+       <property name="text">
+        <string>Remove</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="buttonApply">
+       <property name="text">
+        <string>Apply</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="defaultLayout">
+     <item>
+      <widget class="QLabel" name="labelDefault">
+       <property name="text">
+        <string>Default threshold:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="lineDefaultThreshold">
+       <property name="toolTip">
+        <string>Dead-band applied to every numeric signal not listed above. 0 disables the default.</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="markerLayout">
+     <item>
+      <widget class="QLabel" name="labelMarker">
+       <property name="text">
+        <string>Marker token:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="lineMarker"/>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelStatus">
+     <property name="text">
+      <string>Suppressed messages: 0</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
