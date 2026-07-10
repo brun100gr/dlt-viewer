@@ -19,18 +19,24 @@
 
 #include <QtGui>
 #include <QtEndian>
+#include <QCoreApplication>
 #include <QFile>
-#include <QXmlStreamReader>
-#include <QXmlStreamWriter>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStandardPaths>
 
 #include "dltnoisefilterplugin.h"
 
+// Compile-time defaults used when no JSON config file is provided.
+static const char   * const kDefaultMarker         = DLT_NOISE_FILTER_MARKER;
+static const double         kDefaultGlobalThreshold = 0.05;
+
 // ============================================================
 //  Utility: build a well-formed DLT verbose string payload
-//  (4-byte typeInfo + 2-byte length + UTF-8 data + NUL)
+//  (4-byte typeInfo LE/BE + 2-byte length + UTF-8 data + NUL)
 // ============================================================
-QByteArray DltNoiseFilterPlugin::buildDltStringPayload(const QString &text,
-                                                       bool littleEndian)
+QByteArray DltNoiseFilterPlugin::buildDltStringPayload(const QString &text, bool littleEndian)
 {
     QByteArray strData = text.toUtf8();
     strData.append('\0');
@@ -55,9 +61,7 @@ QByteArray DltNoiseFilterPlugin::buildDltStringPayload(const QString &text,
     return payload;
 }
 
-QString DltNoiseFilterPlugin::makeKey(const QString &apid,
-                                      const QString &ctid,
-                                      const QString &name)
+QString DltNoiseFilterPlugin::makeKey(const QString &apid, const QString &ctid, const QString &name)
 {
     return apid + "|" + ctid + "|" + name;
 }
@@ -66,178 +70,114 @@ QString DltNoiseFilterPlugin::makeKey(const QString &apid,
 //  Plugin lifecycle
 // ============================================================
 DltNoiseFilterPlugin::DltNoiseFilterPlugin()
-    : defaultThreshold(0.0),
-      marker(DLT_NOISE_FILTER_DEFAULT_MARKER),
-      suppressed(0),
-      dltFile(nullptr),
-      form(nullptr)
+    : dltFile(nullptr),
+      defaultThreshold(kDefaultGlobalThreshold),
+      marker(kDefaultMarker)
 {
-    loadDefaults();
+    // Signals are loaded from the JSON config file via loadConfig().
+    // If no file is configured the threshold table stays empty and only
+    // the global defaultThreshold is applied to numeric signals.
 }
 
 DltNoiseFilterPlugin::~DltNoiseFilterPlugin()
 {
 }
 
-void DltNoiseFilterPlugin::loadDefaults()
-{
-    // Built-in defaults for the noisy signals from the example.
-    // These can be overridden by a configuration file or via the UI.
-    const QList<NoiseSignalConfig> defaults = {
-        { "ADF", "ADF_", "AdasDrivingFunction_IN_VehicleLongSpeedComputedValue",   1.0 },
-        { "ADF", "ADF_", "AdasDrivingFunction_IN_CarbodyLatAccelerationCorrected", 0.5 },
-    };
-    // Global default dead-band applied to every other numeric signal.
-    setConfiguration(defaults, marker, 0.05);
-}
-
 // ============================================================
 //  QDLTPluginInterface
 // ============================================================
-QString DltNoiseFilterPlugin::name()                  { return "DLT Noise Filter Plugin"; }
-QString DltNoiseFilterPlugin::pluginVersion()         { return DLT_NOISE_FILTER_PLUGIN_VERSION; }
-QString DltNoiseFilterPlugin::pluginInterfaceVersion(){ return PLUGIN_INTERFACE_VERSION; }
+QString DltNoiseFilterPlugin::name()                   { return "DLT Noise Filter Plugin"; }
+QString DltNoiseFilterPlugin::pluginVersion()          { return DLT_NOISE_FILTER_PLUGIN_VERSION; }
+QString DltNoiseFilterPlugin::pluginInterfaceVersion() { return PLUGIN_INTERFACE_VERSION; }
 QString DltNoiseFilterPlugin::description()
 {
-    return QString("Suppresses noisy physical signals (speed, acceleration, ...) "
-                   "using a per-signal dead-band. Noisy messages are marked with "
-                   "the token '%1', so a negative filter on the token hides them.")
+    return QString("Suppresses noisy physical signals using a per-signal dead-band. "
+                   "Noisy messages are marked with the token '%1' so a negative DLT "
+                   "filter on that token hides them from the view.")
             .arg(marker);
 }
-QString DltNoiseFilterPlugin::error()                 { return errorText; }
+QString DltNoiseFilterPlugin::error() { return errorText; }
 
 bool DltNoiseFilterPlugin::loadConfig(QString filename)
 {
     errorText.clear();
 
-    if (filename.isEmpty())
-        return true; // keep built-in defaults
+    // If no file was configured in DLT Viewer, search in well-known locations.
+    if (filename.isEmpty()) {
+        const QStringList candidates = {
+            // Next to the dlt-viewer executable (most common install layout)
+            QCoreApplication::applicationDirPath() + "/../../plugin/dltnoisefilterplugin/dltnoisefilterplugin.json",
+            // User config directory (~/.config/dlt-viewer/ on Linux)
+            QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)
+                + "/dltnoisefilterplugin.json",
+        };
+        for (const QString &candidate : candidates) {
+            qDebug() << "[DltNoiseFilter] Trying config path:" << candidate
+                     << "- exists:" << QFile::exists(candidate);
+            if (QFile::exists(candidate)) {
+                filename = candidate;
+                break;
+            }
+        }
+        if (filename.isEmpty())
+            return true; // no file found anywhere, keep defaults
+    }
 
     QFile file(filename);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        errorText = QString("Cannot open configuration file: %1").arg(filename);
+        errorText = QString("Cannot open config file: %1").arg(filename);
         return false;
     }
 
-    QList<NoiseSignalConfig> configs;
-    QString newMarker = marker;
-    double newDefault = defaultThreshold;
+    QJsonParseError jsonErr;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &jsonErr);
+    if (doc.isNull()) {
+        errorText = QString("JSON parse error in '%1': %2").arg(filename, jsonErr.errorString());
+        return false;
+    }
 
-    QXmlStreamReader xml(&file);
-    while (!xml.atEnd() && !xml.hasError()) {
-        xml.readNext();
-        if (!xml.isStartElement())
-            continue;
+    const QJsonObject root = doc.object();
 
-        if (xml.name() == QLatin1String("noisefilter")) {
-            const QString m = xml.attributes().value("marker").toString();
-            if (!m.isEmpty())
-                newMarker = m;
-            const QString d = xml.attributes().value("defaultThreshold").toString();
-            if (!d.isEmpty()) {
-                bool dok = false;
-                const double dv = d.toDouble(&dok);
-                if (dok)
-                    newDefault = dv;
-            }
-        } else if (xml.name() == QLatin1String("signal")) {
-            const QXmlStreamAttributes attr = xml.attributes();
-            NoiseSignalConfig cfg;
-            cfg.apid      = attr.value("apid").toString().trimmed();
-            cfg.ctid      = attr.value("ctid").toString().trimmed();
-            cfg.name      = attr.value("name").toString().trimmed();
-            bool ok = false;
-            cfg.threshold = attr.value("threshold").toString().toDouble(&ok);
-            if (!ok || cfg.name.isEmpty())
+    if (root.contains("marker"))
+        marker = root.value("marker").toString(marker).trimmed();
+    if (root.contains("defaultThreshold"))
+        defaultThreshold = root.value("defaultThreshold").toDouble(defaultThreshold);
+
+    if (root.contains("signals")) {
+        thresholds.clear();
+        const QJsonArray jsonSignals = root.value("signals").toArray();
+        for (const QJsonValue &v : jsonSignals) {
+            const QJsonObject s = v.toObject();
+            const QString name = s.value("name").toString().trimmed();
+            if (name.isEmpty())
                 continue;
-            configs.append(cfg);
+            const QString apid = s.value("apid").toString().trimmed();
+            const QString ctid = s.value("ctid").toString().trimmed();
+            const double  thr  = s.value("threshold").toDouble();
+            thresholds.insert(makeKey(apid, ctid, name), thr);
         }
     }
 
-    if (xml.hasError()) {
-        errorText = QString("Error parsing configuration file: %1").arg(xml.errorString());
-        return false;
-    }
-
-    if (!configs.isEmpty())
-        setConfiguration(configs, newMarker, newDefault);
-
     return true;
 }
 
-bool DltNoiseFilterPlugin::saveConfig(QString filename)
-{
-    errorText.clear();
-
-    if (filename.isEmpty()) {
-        errorText = "No configuration file name given.";
-        return false;
-    }
-
-    QFile file(filename);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        errorText = QString("Cannot write configuration file: %1").arg(filename);
-        return false;
-    }
-
-    QXmlStreamWriter xml(&file);
-    xml.setAutoFormatting(true);
-    xml.writeStartDocument();
-    xml.writeStartElement("noisefilter");
-    xml.writeAttribute("marker", marker);
-    xml.writeAttribute("defaultThreshold", QString::number(defaultThreshold));
-    for (const NoiseSignalConfig &cfg : configByKey) {
-        xml.writeStartElement("signal");
-        xml.writeAttribute("apid", cfg.apid);
-        xml.writeAttribute("ctid", cfg.ctid);
-        xml.writeAttribute("name", cfg.name);
-        xml.writeAttribute("threshold", QString::number(cfg.threshold));
-        xml.writeEndElement();
-    }
-    xml.writeEndElement();
-    xml.writeEndDocument();
-
-    return true;
-}
+bool DltNoiseFilterPlugin::saveConfig(QString /*filename*/) { return true; }
 
 QStringList DltNoiseFilterPlugin::infoConfig()
 {
     QStringList info;
-    info << QString("Marker token: %1").arg(marker);
-    info << QString("Default threshold (all other numeric signals): %1")
+    info << QString("Marker: %1").arg(marker);
+    info << QString("Default threshold: %1")
                 .arg(defaultThreshold > 0.0 ? QString::number(defaultThreshold)
                                             : QString("disabled"));
-    for (const NoiseSignalConfig &cfg : configByKey) {
-        info << QString("%1 | %2 | %3  (threshold %4)")
-                    .arg(cfg.apid, cfg.ctid, cfg.name)
-                    .arg(cfg.threshold);
+    for (auto it = thresholds.constBegin(); it != thresholds.constEnd(); ++it) {
+        const QStringList parts = it.key().split('|');
+        const QString label = (parts.size() == 3)
+            ? QString("%1 | %2 | %3").arg(parts[0], parts[1], parts[2])
+            : it.key();
+        info << QString("%1  (threshold %2)").arg(label).arg(it.value());
     }
     return info;
-}
-
-// ============================================================
-//  Configuration API
-// ============================================================
-QList<NoiseSignalConfig> DltNoiseFilterPlugin::signalConfigs() const
-{
-    return configByKey.values();
-}
-
-void DltNoiseFilterPlugin::setConfiguration(const QList<NoiseSignalConfig> &configs,
-                                            const QString &markerToken,
-                                            double defaultThr)
-{
-    thresholds.clear();
-    configByKey.clear();
-    marker = markerToken.trimmed().isEmpty() ? QString(DLT_NOISE_FILTER_DEFAULT_MARKER)
-                                             : markerToken.trimmed();
-    defaultThreshold = (defaultThr > 0.0) ? defaultThr : 0.0;
-
-    for (const NoiseSignalConfig &cfg : configs) {
-        const QString key = makeKey(cfg.apid, cfg.ctid, cfg.name);
-        thresholds.insert(key, cfg.threshold);
-        configByKey.insert(key, cfg);
-    }
 }
 
 // ============================================================
@@ -256,8 +196,8 @@ bool DltNoiseFilterPlugin::parseSignal(QDltMsg &msg, QString &keyOut, double &va
     const QString signalName = text.left(colonIdx).trimmed();
     const QString key = makeKey(apid, ctid, signalName);
 
-    // Accept any signal that has an explicit configuration, or - when a global
-    // default dead-band is active - any numeric "name : value" signal.
+    // Accept signals with an explicit entry, or any numeric signal when the
+    // global default threshold is active.
     if (!thresholds.contains(key) && defaultThreshold <= 0.0)
         return false;
 
@@ -276,67 +216,40 @@ void DltNoiseFilterPlugin::evaluate(int index, QDltMsg &msg)
     QString key;
     double value = 0.0;
     if (!parseSignal(msg, key, value))
-        return; // not a numeric signal subject to filtering -> always kept
+        return;
 
-    // Per-signal threshold if configured, otherwise the global default.
     const double threshold = thresholds.value(key, defaultThreshold);
     if (threshold <= 0.0)
-        return; // 0 (or disabled) -> never suppress this signal
+        return;
 
     auto it = lastShown.find(key);
     if (it == lastShown.end()) {
-        // First occurrence of this signal -> always show it.
         lastShown.insert(key, value);
-        return;
+        return; // first occurrence -> always show
     }
 
     if (qAbs(value - it.value()) >= threshold) {
-        // Significant change -> show it and update the reference value.
-        it.value() = value;
+        it.value() = value; // significant change -> show and update reference
         return;
     }
 
-    // Within the dead-band -> this is noise, suppress it.
+    // Within dead-band -> suppress.
     suppressIndices.insert(index);
-    ++suppressed;
-}
-
-void DltNoiseFilterPlugin::reanalyze()
-{
-    lastShown.clear();
-    suppressIndices.clear();
-    suppressed = 0;
-
-    if (!dltFile)
-        return;
-
-    for (int i = 0; i < dltFile->size(); ++i) {
-        QDltMsg msg;
-        if (dltFile->getMsg(i, msg))
-            evaluate(i, msg);
-    }
-
-    if (form)
-        form->updateStatus();
 }
 
 // ============================================================
 //  QDLTPluginDecoderInterface
 // ============================================================
-// Only the messages that were marked as noise during indexing are decoded.
 bool DltNoiseFilterPlugin::isMsg(QDltMsg &msg, int /*triggeredByUser*/)
 {
     return suppressIndices.contains(msg.getIndex());
 }
 
-// Prepend the marker token to the payload so that a negative filter can hide it.
 bool DltNoiseFilterPlugin::decodeMsg(QDltMsg &msg, int /*triggeredByUser*/)
 {
-    const QString text    = msg.toStringPayload();
-    const QString decoded = marker + " " + text;
-
+    const QString newText = marker + " " + msg.toStringPayload();
     const bool le = (msg.getEndianness() == QDlt::DltEndiannessLittleEndian);
-    QByteArray newPayload = buildDltStringPayload(decoded, le);
+    QByteArray newPayload = buildDltStringPayload(newText, le);
     msg.setPayload(newPayload);
     msg.parseArguments();
     return true;
@@ -347,70 +260,35 @@ bool DltNoiseFilterPlugin::decodeMsg(QDltMsg &msg, int /*triggeredByUser*/)
 // ============================================================
 QWidget* DltNoiseFilterPlugin::initViewer()
 {
-    form = new DltNoiseFilterPluginNs::Form(this);
-    return form;
+    return nullptr; // no GUI panel
 }
 
 void DltNoiseFilterPlugin::initFileStart(QDltFile *file)
 {
     dltFile = file;
-
-    // Reset all sequential state: it is rebuilt by initMsg() in file order.
     lastShown.clear();
     suppressIndices.clear();
-    suppressed = 0;
 }
 
 void DltNoiseFilterPlugin::initMsg(int index, QDltMsg &msg)
 {
-    if (!dltFile)
-        return;
-    // initMsg() is guaranteed to be called sequentially in file order, which
-    // is exactly what the dead-band needs. The decision is stored per absolute
-    // index and consumed later by isMsg()/decodeMsg().
     evaluate(index, msg);
 }
 
-void DltNoiseFilterPlugin::initMsgDecoded(int /*index*/, QDltMsg &/*msg*/)
-{
-}
-
-void DltNoiseFilterPlugin::initFileFinish()
-{
-    if (form)
-        form->updateStatus();
-}
-
-void DltNoiseFilterPlugin::updateFileStart()
-{
-}
+void DltNoiseFilterPlugin::initMsgDecoded(int /*index*/, QDltMsg &/*msg*/) {}
+void DltNoiseFilterPlugin::initFileFinish() {}
+void DltNoiseFilterPlugin::updateFileStart() {}
 
 void DltNoiseFilterPlugin::updateMsg(int index, QDltMsg &msg)
 {
-    if (!dltFile)
-        return;
     evaluate(index, msg);
 }
 
-void DltNoiseFilterPlugin::updateMsgDecoded(int /*index*/, QDltMsg &/*msg*/)
-{
-}
+void DltNoiseFilterPlugin::updateMsgDecoded(int /*index*/, QDltMsg &/*msg*/) {}
+void DltNoiseFilterPlugin::updateFileFinish() {}
+void DltNoiseFilterPlugin::selectedIdxMsg(int /*index*/, QDltMsg &/*msg*/) {}
+void DltNoiseFilterPlugin::selectedIdxMsgDecoded(int /*index*/, QDltMsg &/*msg*/) {}
 
-void DltNoiseFilterPlugin::updateFileFinish()
-{
-    if (form)
-        form->updateStatus();
-}
-
-void DltNoiseFilterPlugin::selectedIdxMsg(int /*index*/, QDltMsg &/*msg*/)
-{
-}
-
-void DltNoiseFilterPlugin::selectedIdxMsgDecoded(int /*index*/, QDltMsg &/*msg*/)
-{
-}
-
-// ============================================================
 #if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
 Q_EXPORT_PLUGIN2(DltNoiseFilterPlugin, DltNoiseFilterPlugin);
 #endif

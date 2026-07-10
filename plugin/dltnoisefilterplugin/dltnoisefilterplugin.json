@@ -1,0 +1,18 @@
+{
+    "marker": "NOISE_SUPPRESSED",
+    "defaultThreshold": 0.05,
+    "signals": [
+        {
+            "apid": "ADF",
+            "ctid": "ADF_",
+            "name": "AdasDrivingFunction_IN_VehicleLongSpeedComputedValue",
+            "threshold": 1.0
+        },
+        {
+            "apid": "ADF",
+            "ctid": "ADF_",
+            "name": "AdasDrivingFunction_IN_CarbodyLatAccelerationCorrected",
+            "threshold": 0.4
+        }
+    ]
+}

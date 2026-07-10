@@ -10,8 +10,7 @@
 # For further information see http://www.covesa.global/.
 
 add_library(dltnoisefilterplugin MODULE
-    dltnoisefilterplugin.cpp
-    form.cpp)
+    dltnoisefilterplugin.cpp)
 
 target_link_libraries(dltnoisefilterplugin qdlt ${QT_PREFIX}::Widgets)
 
