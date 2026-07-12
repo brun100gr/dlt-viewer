@@ -1,6 +1,11 @@
 #include <QtGui>
 #include <QtEndian>
-#include <QRegularExpression>
+#include <QCoreApplication>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStandardPaths>
 #include "mydecodeplugin.h"
 
 // ============================================================
@@ -34,160 +39,27 @@ QByteArray MyDecodePlugin::buildDltStringPayload(const QString &text,
 }
 
 // ============================================================
-//  Decoder registry
-//  Key format: "APID|CTID|payload_prefix"
-//  Add one entry per signal you want to decode.
+//  Decoder registry loaded from JSON
+//  JSON format (mydecodeplugin.json):
+//  {
+//    "decoders": [
+//      {
+//        "apid": "ADF", "ctid": "ADF_",
+//        "prefix": "FCT_ManageLateralState_OUT_ConditionEvaluationDbg",
+//        "outputPrefix": "",          // optional: if set, replaces "{text} -> "
+//        "bits": [
+//          { "value": 1, "name": "CarbodyLatAccelerationCorrected" },
+//          ...
+//        ]
+//      }
+//    ]
+//  }
 // ============================================================
-void MyDecodePlugin::registerDecoders(QHash<QString, DecoderFn> &d)
-{
-    // ----------------------------------------------------------
-    // Decoder 1: ADF | ADF_ | FCT_ManageLateralState_OUT_ConditionEvaluationDbg
-    // ----------------------------------------------------------
-    d["ADF|ADF_|FCT_ManageLateralState_OUT_ConditionEvaluationDbg"] =
-        [](QDltMsg &msg, const QString &text) -> bool
-    {
-        const int colonIdx = text.lastIndexOf(':');
-        if (colonIdx < 0) return false;
-
-        bool ok = false;
-        const uint32_t mask = text.mid(colonIdx + 1).trimmed().toUInt(&ok);
-        if (!ok) return false;
-
-        static const QVector<QPair<uint32_t, QString>> bitMap = {
-            {    1u, "CarbodyLatAccelerationCorrected"},
-            {    2u, "LPA_PerceptionState"},
-            {    4u, "DstWidthEgoLine"},
-            {    8u, "SteeringwheelRotationVelocityFrontValue"},
-            {   16u, "MAL"},
-            {   32u, "ESC_Status"},
-            {   64u, "ESC_TCS_State"},
-            {  128u, "VehicleLongSpeedComputedValue"},
-            {  256u, "FailureDetected"},
-            {  512u, "TurnSignalSts"},
-            { 1024u, "HandwheelSteeringTorqueMeasured"},
-            { 2048u, "ADAS_VehicleMotion"},
-            { 4096u, "HOD_Flag"},
-        };
-
-        QStringList active;
-        for (const auto &pair : bitMap)
-            if (mask & pair.first)
-                active << pair.second;
-
-        const QString decoded = text + " -> " +
-                                (active.isEmpty() ? "none" : active.join(", "));
-
-        const bool le = (msg.getEndianness() == QDlt::DltEndiannessLittleEndian);
-        QByteArray newPayload = buildDltStringPayload(decoded, le);
-        msg.setPayload(newPayload);
-        msg.parseArguments();
-        return true;
-    };
-
-    // ----------------------------------------------------------
-    // Decoder 1: ADF | ADF_ | FCT_ManageLateralState_OUT_FailureEvaluationDbg
-    // ----------------------------------------------------------
-    d["ADF|ADF_|FCT_ManageLateralState_OUT_FailureEvaluationDbg"] =
-        [](QDltMsg &msg, const QString &text) -> bool
-    {
-        const int colonIdx = text.lastIndexOf(':');
-        if (colonIdx < 0) return false;
-
-        bool ok = false;
-        const uint32_t mask = text.mid(colonIdx + 1).trimmed().toUInt(&ok);
-        if (!ok) return false;
-
-        static const QVector<QPair<uint32_t, QString>> bitMap = {
-            {    1u, "uno"},
-            {    2u, "due"},
-            {    4u, "tre"},
-            {    8u, "quattro"},
-            {   16u, "cinque"},
-            {   32u, "sei"},
-            {   64u, "sette"},
-            {  128u, "otto"},
-            {  256u, "nove"},
-            {  512u, "dieci"},
-            { 1024u, "undici"},
-            { 2048u, "dodici"},
-            { 4096u, "tredici"},
-        };
-
-        QStringList active;
-        for (const auto &pair : bitMap)
-            if (mask & pair.first)
-                active << pair.second;
-
-        const QString decoded = text + " -> " +
-                                (active.isEmpty() ? "none" : active.join(", "));
-
-        const bool le = (msg.getEndianness() == QDlt::DltEndiannessLittleEndian);
-        QByteArray newPayload = buildDltStringPayload(decoded, le);
-        msg.setPayload(newPayload);
-        msg.parseArguments();
-        return true;
-    };
-
-    // ----------------------------------------------------------
-    // Decoder 2: APP2 | CTX2 | ActivationCondition
-    // Generic bitmask → condizione1..condizione32
-    // Replace APP2/CTX2 with your real APID and CTID.
-    // ----------------------------------------------------------
-    d["APP2|CTX2|ActivationCondition"] =
-        [](QDltMsg &msg, const QString &text) -> bool
-    {
-        const int colonIdx = text.lastIndexOf(':');
-        if (colonIdx < 0) return false;
-
-        bool ok = false;
-        const uint32_t mask = text.mid(colonIdx + 1).trimmed().toUInt(&ok);
-        if (!ok) return false;
-
-        QStringList conditions;
-        for (int i = 0; i < 32; ++i)
-            if (mask & (1u << i))
-                conditions << QString("condizione%1").arg(i + 1);
-
-        const QString decoded = "Activation Condition are: " +
-                                (conditions.isEmpty() ? "none" : conditions.join(", "));
-
-        const bool le = (msg.getEndianness() == QDlt::DltEndiannessLittleEndian);
-        QByteArray newPayload = buildDltStringPayload(decoded, le);
-        msg.setPayload(newPayload);
-        msg.parseArguments();
-        return true;
-    };
-
-    // ----------------------------------------------------------
-    // Aggiungi altri decoder qui con lo stesso schema:
-    //
-    // d["APID|CTID|TuoPrefix"] = [](QDltMsg &msg, const QString &text) -> bool
-    // {
-    //     const int colonIdx = text.lastIndexOf(':');
-    //     if (colonIdx < 0) return false;
-    //
-    //     bool ok = false;
-    //     const uint32_t mask = text.mid(colonIdx + 1).trimmed().toUInt(&ok);
-    //     if (!ok) return false;
-    //
-    //     // ... tua logica di decodifica ...
-    //
-    //     const bool le = (msg.getEndianness() == QDlt::DltEndiannessLittleEndian);
-    //     QByteArray newPayload = buildDltStringPayload(decoded, le);
-    //     msg.setPayload(newPayload);
-    //     msg.parseArguments();
-    //     return true;
-    // };
-    // ----------------------------------------------------------
-}
 
 // ============================================================
 //  Plugin lifecycle
 // ============================================================
-MyDecodePlugin::MyDecodePlugin()
-{
-    registerDecoders(dispatch_);
-}
+MyDecodePlugin::MyDecodePlugin() {}
 
 MyDecodePlugin::~MyDecodePlugin() {}
 
@@ -198,10 +70,126 @@ QString MyDecodePlugin::name()                  { return "My Decode Plugin"; }
 QString MyDecodePlugin::pluginVersion()         { return MY_DECODE_PLUGIN_VERSION; }
 QString MyDecodePlugin::pluginInterfaceVersion(){ return PLUGIN_INTERFACE_VERSION; }
 QString MyDecodePlugin::description()           { return QString(); }
-QString MyDecodePlugin::error()                 { return QString(); }
-bool    MyDecodePlugin::loadConfig(QString)     { return true; }
-bool    MyDecodePlugin::saveConfig(QString)     { return true; }
-QStringList MyDecodePlugin::infoConfig()        { return QStringList(); }
+QString MyDecodePlugin::error()                 { return errorText_; }
+
+bool MyDecodePlugin::loadConfig(QString filename)
+{
+    errorText_.clear();
+    dispatch_.clear();
+
+    // Se nessun file è configurato in DLT Viewer, cerca nei percorsi standard.
+    if (filename.isEmpty()) {
+        const QStringList candidates = {
+            QCoreApplication::applicationDirPath() + "/../../plugin/mydecodeplugin/mydecodeplugin.json",
+            QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)
+                + "/mydecodeplugin.json",
+        };
+        for (const QString &candidate : candidates) {
+            qDebug() << "[MyDecodePlugin] Trying config path:" << candidate
+                     << "- exists:" << QFile::exists(candidate);
+            if (QFile::exists(candidate)) {
+                filename = candidate;
+                break;
+            }
+        }
+        if (filename.isEmpty())
+            return true; // nessun file trovato, dispatch rimane vuoto
+    }
+
+    QFile file(filename);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        errorText_ = QString("Cannot open config file: %1").arg(filename);
+        return false;
+    }
+
+    QJsonParseError jsonErr;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &jsonErr);
+    if (doc.isNull()) {
+        errorText_ = QString("JSON parse error in '%1': %2").arg(filename, jsonErr.errorString());
+        return false;
+    }
+
+    const QJsonObject root = doc.object();
+    if (!root.contains("decoders")) {
+        errorText_ = QString("Missing 'decoders' array in '%1'").arg(filename);
+        return false;
+    }
+
+    const QJsonArray decoders = root.value("decoders").toArray();
+    for (const QJsonValue &v : decoders) {
+        const QJsonObject d = v.toObject();
+
+        const QString apid   = d.value("apid").toString().trimmed();
+        const QString ctid   = d.value("ctid").toString().trimmed();
+        const QString prefix = d.value("prefix").toString().trimmed();
+        if (apid.isEmpty() || ctid.isEmpty() || prefix.isEmpty())
+            continue;
+
+        const QString outputPrefix = d.value("outputPrefix").toString(); // "" se assente
+
+        QVector<QPair<uint32_t, QString>> bitMap;
+        const QJsonArray bits = d.value("bits").toArray();
+        for (const QJsonValue &bv : bits) {
+            const QJsonObject b = bv.toObject();
+            // "value" può essere stringa (es. "0x10") o numero intero
+            uint32_t bitVal = 0;
+            if (b.value("value").isString()) {
+                bool ok = false;
+                bitVal = b.value("value").toString().toUInt(&ok, 0);
+                if (!ok) continue;
+            } else {
+                bitVal = static_cast<uint32_t>(b.value("value").toInt(0));
+            }
+            const QString bitName = b.value("name").toString().trimmed();
+            if (bitName.isEmpty()) continue;
+            bitMap.append({bitVal, bitName});
+        }
+
+        const QString key = apid + "|" + ctid + "|" + prefix;
+        dispatch_[key] = [bitMap, outputPrefix](QDltMsg &msg, const QString &text) -> bool
+        {
+            const int colonIdx = text.lastIndexOf(':');
+            if (colonIdx < 0) return false;
+
+            bool ok = false;
+            const uint32_t mask = text.mid(colonIdx + 1).trimmed().toUInt(&ok);
+            if (!ok) return false;
+
+            QStringList active;
+            for (const auto &pair : bitMap)
+                if (mask & pair.first)
+                    active << pair.second;
+
+            const QString activeStr = active.isEmpty() ? "none" : active.join(", ");
+            const QString decoded   = outputPrefix.isEmpty()
+                                      ? text + " -> " + activeStr
+                                      : outputPrefix + activeStr;
+
+            const bool le = (msg.getEndianness() == QDlt::DltEndiannessLittleEndian);
+            QByteArray newPayload = MyDecodePlugin::buildDltStringPayload(decoded, le);
+            msg.setPayload(newPayload);
+            msg.parseArguments();
+            return true;
+        };
+    }
+
+    return true;
+}
+
+bool MyDecodePlugin::saveConfig(QString) { return true; }
+
+QStringList MyDecodePlugin::infoConfig()
+{
+    QStringList info;
+    info << QString("Loaded decoders: %1").arg(dispatch_.size());
+    for (auto it = dispatch_.constBegin(); it != dispatch_.constEnd(); ++it) {
+        const QStringList parts = it.key().split('|');
+        info << (parts.size() == 3
+                 ? QString("  %1 | %2 | %3").arg(parts[0], parts[1], parts[2])
+                 : QString("  ") + it.key());
+    }
+    return info;
+}
 
 // ============================================================
 //  QDLTPluginDecoderInterface

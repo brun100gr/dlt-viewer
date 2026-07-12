@@ -3,6 +3,9 @@
 
 #include <QObject>
 #include <QHash>
+#include <QPair>
+#include <QString>
+#include <QVector>
 #include <functional>
 #include "plugininterface.h"
 
@@ -43,9 +46,9 @@ public:
 private:
     using DecoderFn = std::function<bool(QDltMsg &, const QString &)>;
     QHash<QString, DecoderFn> dispatch_;
+    QString errorText_;
 
     static QByteArray buildDltStringPayload(const QString &text, bool littleEndian);
-    static void registerDecoders(QHash<QString, DecoderFn> &d);
 };
 
 #endif // MYDECODEPLUGIN_H

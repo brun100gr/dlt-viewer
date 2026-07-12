@@ -1,0 +1,85 @@
+{
+    "decoders": [
+        {
+            "apid": "ADF",
+            "ctid": "ADF_",
+            "prefix": "FCT_ManageLateralState_OUT_ConditionEvaluationDbg",
+            "bits": [
+                { "value": 1,    "name": "CarbodyLatAccelerationCorrected" },
+                { "value": 2,    "name": "LPA_PerceptionState" },
+                { "value": 4,    "name": "DstWidthEgoLine" },
+                { "value": 8,    "name": "SteeringwheelRotationVelocityFrontValue" },
+                { "value": 16,   "name": "MAL" },
+                { "value": 32,   "name": "ESC_Status" },
+                { "value": 64,   "name": "ESC_TCS_State" },
+                { "value": 128,  "name": "VehicleLongSpeedComputedValue" },
+                { "value": 256,  "name": "FailureDetected" },
+                { "value": 512,  "name": "TurnSignalSts" },
+                { "value": 1024, "name": "HandwheelSteeringTorqueMeasured" },
+                { "value": 2048, "name": "ADAS_VehicleMotion" },
+                { "value": 4096, "name": "HOD_Flag" },
+                { "value": 8192, "name": "SteerwheelHeld" }
+            ]
+        },
+        {
+            "apid": "ADF",
+            "ctid": "ADF_",
+            "prefix": "FCT_ManageLateralState_OUT_FailureEvaluationDbg",
+            "bits": [
+                { "value": 1,    "name": "HODFailStatus" },
+                { "value": 2,    "name": "LPA_PerceptionState" },
+                { "value": 4,    "name": "LPA_CockpitFailure_Failure" },
+                { "value": 8,    "name": "four" },
+                { "value": 16,   "name": "ADAS_VehicleMotion" },
+                { "value": 32,   "name": "LxA_SteeringState" },
+                { "value": 64,   "name": "ESC_TCS_Failstatus" },
+                { "value": 128,  "name": "eight" },
+                { "value": 256,  "name": "nine" },
+                { "value": 512,  "name": "ten" },
+                { "value": 1024, "name": "eleven" },
+                { "value": 2048, "name": "twelve" },
+                { "value": 4096, "name": "thirteen" }
+            ]
+        },
+        {
+            "apid": "APP2",
+            "ctid": "CTX2",
+            "prefix": "ActivationCondition",
+            "outputPrefix": "Activation Condition are: ",
+            "bits": [
+                { "value": 1,          "name": "condition1" },
+                { "value": 2,          "name": "condition2" },
+                { "value": 4,          "name": "condition3" },
+                { "value": 8,          "name": "condition4" },
+                { "value": 16,         "name": "condition5" },
+                { "value": 32,         "name": "condition6" },
+                { "value": 64,         "name": "condition7" },
+                { "value": 128,        "name": "condition8" },
+                { "value": 256,        "name": "condition9" },
+                { "value": 512,        "name": "condition10" },
+                { "value": 1024,       "name": "condition11" },
+                { "value": 2048,       "name": "condition12" },
+                { "value": 4096,       "name": "condition13" },
+                { "value": 8192,       "name": "condition14" },
+                { "value": 16384,      "name": "condition15" },
+                { "value": 32768,      "name": "condition16" },
+                { "value": 65536,      "name": "condition17" },
+                { "value": 131072,     "name": "condition18" },
+                { "value": 262144,     "name": "condition19" },
+                { "value": 524288,     "name": "condition20" },
+                { "value": 1048576,    "name": "condition21" },
+                { "value": 2097152,    "name": "condition22" },
+                { "value": 4194304,    "name": "condition23" },
+                { "value": 8388608,    "name": "condition24" },
+                { "value": 16777216,   "name": "condition25" },
+                { "value": 33554432,   "name": "condition26" },
+                { "value": 67108864,   "name": "condition27" },
+                { "value": 134217728,  "name": "condition28" },
+                { "value": 268435456,  "name": "condition29" },
+                { "value": 536870912,  "name": "condition30" },
+                { "value": 1073741824, "name": "condition31" },
+                { "value": 2147483648, "name": "condition32" }
+            ]
+        }
+    ]
+}
